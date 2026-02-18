@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>유동적 자리 배치 프로그램</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Pen+Script&display=swap');
+        
+        body {
+            font-family: 'Gaegu', cursive;
+            background: #e0f2fe;
+            background-image: 
+                radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.8) 0%, transparent 20%),
+                radial-gradient(circle at 80% 10%, rgba(255, 255, 255, 0.8) 0%, transparent 15%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .landscape-bg {
+            position: fixed;
+            bottom: 0; left: 0; width: 100%; height: 180px;
+            background: linear-gradient(to top, #86efac 0%, transparent 100%);
+            z-index: -1;
+            border-radius: 50% 50% 0 0 / 20% 20% 0 0;
+            transform: scaleX(1.5);
+        }
+
+        .seat {
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            border: 5px solid #ffffff;
+            background-color: #ccfbf1;
+            box-shadow: 0 6px 0px rgba(0,0,0,0.1);
+            border-radius: 20px;
+            user-select: none;
+            width: 6.5rem; 
+            height: 5.5rem; 
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.4rem; 
+            font-weight: bold;
+            position: relative;
+        }
+
+        .seat:hover {
+            transform: translateY(-3px);
+            background-color: #99f6e4;
+            box-shadow: 0 8px 0px rgba(0,0,0,0.1);
+        }
+
+        .seat.selected {
+            border-color: #f59e0b;
+            background-color: #fef3c7;
+            animation: bounce 0.5s infinite alternate;
+        }
+
+        /* 빈 자리 스타일: 학생들이 이동할 수 있는 타겟임을 보여주기 위해 살짝 강조 */
+        .empty-placeholder {
+            width: 6.5rem;
+            height: 5.5rem;
+            border: 2px dashed rgba(255,255,255,0.4);
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .empty-placeholder:hover {
+            background: rgba(255,255,255,0.25);
+        }
+
+        @keyframes bounce {
+            from { transform: scale(1.05); }
+            to { transform: scale(1.1); }
+        }
+
+        .desk-header {
+            background: #064e3b; 
+            color: white;
+            border: 8px solid #78350f; 
+            border-radius: 15px;
+            padding: 10px 60px;
+            font-size: 3rem;
+            font-family: 'Nanum Pen Script', cursive;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            margin-bottom: 40px;
+            position: relative;
+            transform: perspective(500px) rotateX(10deg);
+        }
+
+        .countdown-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: #e11d48;
+            font-size: 18rem;
+            font-family: 'Nanum Pen Script', cursive;
+            text-shadow: 6px 6px 0px #fff;
+        }
+
+        .gender-dot {
+            width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;
+            position: absolute; bottom: 5px; right: 5px;
+        }
+
+        .btn-cute {
+            font-family: 'Gaegu', cursive;
+            font-weight: 700;
+            transition: all 0.2s;
+            box-shadow: 0 4px 0px rgba(0,0,0,0.1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-cute:active { transform: translateY(2px); box-shadow: none; }
+
+        .mode-btn {
+            background: white; color: #64748b; border: 2px solid #e2e8f0;
+            padding: 6px 14px; border-radius: 999px; cursor: pointer; font-size: 1.1rem;
+        }
+
+        .mode-btn.active {
+            background: #3b82f6; color: white; border-color: #2563eb; box-shadow: 0 3px 0px #1d4ed8;
+        }
+
+        .input-box {
+            border: 2px solid #cbd5e1; border-radius: 10px; padding: 4px 8px; width: 55px;
+            text-align: center; font-size: 1.1rem; font-weight: bold; outline: none; transition: border-color 0.2s;
+        }
+
+        .input-box:focus { border-color: #3b82f6; }
+    </style>
+</head>
+<body>
+    <div class="landscape-bg"></div>
+
+    <div class="max-w-7xl mx-auto relative px-4">
+        <header class="flex flex-col lg:flex-row justify-between items-center py-6 mb-8 gap-6 border-b-2 border-white/30">
+            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-4">
+                <h1 class="text-4xl lg:text-5xl font-bold text-blue-600" style="text-shadow: 2px 2px 0 white;">🎈 우리 반 자리 배치</h1>
+                
+                <div class="inline-flex bg-white/40 p-1 rounded-full border border-blue-100 shadow-sm">
+                    <button id="modeNormal" onclick="changeMode('normal')" class="mode-btn btn-cute active mr-1">일반 대형</button>
+                    <button id="modeExam" onclick="changeMode('exam')" class="mode-btn btn-cute">시험 대형</button>
+                </div>
+
+                <div id="layoutSettings" class="flex items-center gap-2 bg-white/60 p-2 rounded-2xl border border-white shadow-sm"></div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <button onclick="toggleSetup()" class="btn-cute bg-white text-blue-500 border-2 border-blue-500 px-5 py-2 rounded-full hover:bg-blue-50 text-xl whitespace-nowrap">명단 수정 ✍️</button>
+                <button onclick="startSeating()" class="btn-cute bg-yellow-400 text-yellow-900 px-8 py-2 rounded-full hover:bg-yellow-300 text-2xl whitespace-nowrap">자리 섞기! 🎲</button>
+            </div>
+        </header>
+
+        <div class="flex justify-center">
+            <div class="desk-header">교 탁</div>
+        </div>
+
+        <div id="classroomGrid" class="flex flex-col items-center gap-6 pb-32 overflow-auto"></div>
+    </div>
+
+    <div id="setupModal" class="fixed inset-0 bg-black/40 hidden z-50 flex justify-center items-center backdrop-blur-sm p-4">
+        <div class="bg-white p-6 md:p-10 rounded-3xl w-full max-w-2xl shadow-2xl border-4 border-blue-200">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-700">학생 명단 쓰기 ✍️</h2>
+                <button onclick="toggleSetup()" class="text-5xl text-gray-400 hover:text-red-500 transition">×</button>
+            </div>
+            
+            <div class="mb-4 p-4 bg-blue-50 rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center">
+                <p class="text-blue-600 font-bold mb-2">파일로 명단 불러오기 (.txt, .xlsx, .csv)</p>
+                <input type="file" id="fileInput" accept=".txt, .xlsx, .xls, .csv" class="hidden" onchange="handleFileUpload(event)">
+                <label for="fileInput" class="btn-cute bg-blue-500 text-white px-6 py-2 rounded-full cursor-pointer hover:bg-blue-600">파일 선택하기 📁</label>
+            </div>
+
+            <textarea id="studentDataInput" class="w-full h-48 md:h-64 p-6 border-4 border-blue-50 rounded-2xl font-mono text-xl mb-6 focus:border-blue-300 outline-none transition" placeholder="예: 1,김철수,남"></textarea>
+            
+            <div class="flex justify-center">
+                <button onclick="saveStudents()" class="btn-cute bg-blue-500 text-white px-12 py-4 rounded-full text-2xl hover:bg-blue-600">준비 완료! 🚀</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="countdown" class="countdown-overlay">3</div>
+
+    <script>
+        let seatingLayout = []; // 학생 객체 배열 {id, name, gender}
+        let selectedIndex = null;
+        let audioCtx = null;
+        let currentMode = 'normal'; 
+        
+        let config = {
+            normalGroups: 3, 
+            examRows: 5,     
+            examCols: 6      
+        };
+
+        const defaultData = "1,고예진,여\n2,오예건,남\n3,엄다은,여\n4,김민재,남\n5,함수빈,여\n6,서하윤,여\n7,김재호,남\n8,김수빈,여\n9,전은성,남\n10,유한별,여\n11,신윤서,여\n12,김민건,남\n13,이새봄,여\n14,김현주,여\n15,김다인,여\n16,박주원,남\n17,명성후,남\n18,이주연,여\n19,김보은,여\n20,정윤찬,남\n21,박은서,여\n22,장채원,여\n23,임서현,여\n24,최수인,여\n25,임동근,남\n26,박성윤,남";
+
+        window.onload = () => {
+            const savedData = localStorage.getItem('studentList') || defaultData;
+            document.getElementById('studentDataInput').value = savedData;
+            updateSettingsUI();
+            parseAndRender(savedData);
+        };
+
+        function changeMode(mode) {
+            currentMode = mode;
+            document.getElementById('modeNormal').classList.toggle('active', mode === 'normal');
+            document.getElementById('modeExam').classList.toggle('active', mode === 'exam');
+            updateSettingsUI();
+            renderSeats();
+        }
+
+        function updateSettingsUI() {
+            const container = document.getElementById('layoutSettings');
+            if (currentMode === 'normal') {
+                container.innerHTML = `
+                    <div class="flex items-center gap-1">
+                        <span class="text-lg text-gray-600 ml-2">분단:</span>
+                        <input type="number" id="normalGroups" value="${config.normalGroups}" min="1" max="6" oninput="updateConfig(this)" class="input-box">
+                        <span class="text-lg text-gray-600">개</span>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="flex items-center gap-1">
+                        <span class="text-lg text-gray-600 ml-2">세로:</span>
+                        <input type="number" id="examCols" value="${config.examCols}" min="1" max="10" oninput="updateConfig(this)" class="input-box">
+                        <span class="text-lg text-gray-600">열</span>
+                    </div>
+                    <div class="flex items-center gap-1 ml-2">
+                        <span class="text-lg text-gray-600">가로:</span>
+                        <input type="number" id="examRows" value="${config.examRows}" min="1" max="12" oninput="updateConfig(this)" class="input-box">
+                        <span class="text-lg text-gray-600">행</span>
+                    </div>
+                `;
+            }
+        }
+
+        function updateConfig(el) {
+            config[el.id] = parseInt(el.value) || 1;
+            renderSeats();
+        }
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playImpactSound(freq, type = 'sine', duration = 0.2, volume = 0.1) {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.5, audioCtx.currentTime + duration);
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playFanfare() {
+            initAudio();
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, i) => {
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 1);
+                }, i * 50);
+            });
+        }
+
+        function toggleSetup() { document.getElementById('setupModal').classList.toggle('hidden'); }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            const fileName = file.name.toLowerCase();
+            if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+                    document.getElementById('studentDataInput').value = json.filter(r => r.length > 0).map(r => r.join(',')).join('\n');
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.onload = (e) => { document.getElementById('studentDataInput').value = e.target.result; };
+                reader.readAsText(file, 'utf-8');
+            }
+        }
+
+        function parseAndRender(data) {
+            seatingLayout = data.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+                .map(line => {
+                    const parts = line.split(',').map(s => s.trim());
+                    if (!parts[1]) return null;
+                    return { id: parts[0] || '', name: parts[1], gender: parts[2] || '남' };
+                })
+                .filter(student => student !== null);
+            
+            // 학생 수가 바뀔 때마다 레이아웃에 맞게 가상의 "빈 공간"을 충분히 확보
+            renderSeats();
+        }
+
+        function saveStudents() {
+            const data = document.getElementById('studentDataInput').value;
+            localStorage.setItem('studentList', data);
+            parseAndRender(data);
+            toggleSetup();
+        }
+
+        function renderSeats() {
+            const grid = document.getElementById('classroomGrid');
+            grid.innerHTML = '';
+            const total = seatingLayout.length;
+            if (currentMode === 'normal') renderNormalMode(grid, total);
+            else renderExamMode(grid, total);
+        }
+
+        /**
+         * 일반 대형 렌더링
+         * 모든 분단에 마지막 줄이 생성되도록 강제하여 뒷자리 이동 편의성 제공
+         */
+        function renderNormalMode(grid, total) {
+            const numGroups = config.normalGroups;
+            const seatsPerRow = numGroups * 2;
+            
+            // 명단에 있는 학생들을 배치하기 위해 필요한 행 수 계산
+            let rowsNeeded = Math.ceil(total / seatsPerRow);
+            
+            // [요청 사항 반영] 
+            // 마지막 줄이 모든 분단에 고르게 나타나도록 하기 위해 
+            // 만약 마지막 행이 꽉 차지 않았다면, 그 행은 모든 분단에 존재하게 됩니다.
+            // (이미 numGroups * 2 로 계산하므로 행 단위로 렌더링됨)
+
+            const mainContainer = document.createElement('div');
+            mainContainer.className = "flex gap-12 items-start justify-center";
+            
+            const groupContainers = [];
+            for (let g = 0; g < numGroups; g++) {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = "grid grid-cols-2 gap-3";
+                groupContainers.push(groupDiv);
+                mainContainer.appendChild(groupDiv);
+            }
+
+            let studentIdx = 0;
+            // 각 행별로 루프를 돌며 모든 분단의 칸을 생성
+            for (let r = 0; r < rowsNeeded; r++) {
+                for (let g = 0; g < numGroups; g++) {
+                    // 왼쪽 짝꿍
+                    if (studentIdx < total) {
+                        createSeatElement(groupContainers[g], { student: seatingLayout[studentIdx], index: studentIdx });
+                    } else {
+                        // 학생이 없더라도 빈칸(Placeholder) 생성
+                        createEmptyPlaceholder(groupContainers[g], studentIdx);
+                    }
+                    studentIdx++;
+
+                    // 오른쪽 짝꿍
+                    if (studentIdx < total) {
+                        createSeatElement(groupContainers[g], { student: seatingLayout[studentIdx], index: studentIdx });
+                    } else {
+                        // 학생이 없더라도 빈칸(Placeholder) 생성
+                        createEmptyPlaceholder(groupContainers[g], studentIdx);
+                    }
+                    studentIdx++;
+                }
+            }
+            grid.appendChild(mainContainer);
+        }
+
+        function renderExamMode(grid, total) {
+            const rows = config.examRows;
+            const cols = config.examCols;
+            const mainContainer = document.createElement('div');
+            mainContainer.className = "flex gap-6 items-start justify-center";
+            
+            let studentIdx = 0;
+            for (let c = 0; c < cols; c++) {
+                const colDiv = document.createElement('div');
+                colDiv.className = "flex flex-col gap-3";
+                for (let r = 0; r < rows; r++) {
+                    if (studentIdx < total) {
+                        createSeatElement(colDiv, { student: seatingLayout[studentIdx], index: studentIdx });
+                    } else {
+                        createEmptyPlaceholder(colDiv, studentIdx);
+                    }
+                    studentIdx++;
+                }
+                mainContainer.appendChild(colDiv);
+            }
+            grid.appendChild(mainContainer);
+        }
+
+        function createSeatElement(container, item) {
+            const seatDiv = document.createElement('div');
+            seatDiv.className = `seat ${selectedIndex === item.index ? 'selected' : ''}`;
+            const dotColor = item.student.gender === '남' ? '#3b82f6' : '#ec4899';
+            seatDiv.innerHTML = `<span class="mb-1">${item.student.name}</span><div class="gender-dot" style="background: ${dotColor}"></div>`;
+            seatDiv.onclick = () => handleSeatClick(item.index);
+            container.appendChild(seatDiv);
+        }
+
+        // 빈칸(Placeholder)도 클릭하여 학생을 옮겨올 수 있도록 인덱스를 부여함
+        function createEmptyPlaceholder(container, index) {
+            const empty = document.createElement('div');
+            empty.className = `empty-placeholder ${selectedIndex === index ? 'border-yellow-400 bg-yellow-50' : ''}`;
+            empty.onclick = () => handleSeatClick(index);
+            container.appendChild(empty);
+        }
+
+        function handleSeatClick(index) {
+            initAudio();
+            
+            // 첫 번째 선택
+            if (selectedIndex === null) {
+                // 학생이 있는 칸이거나, 이동할 빈 칸을 먼저 찍을 수 있음
+                selectedIndex = index;
+                playImpactSound(600, 'square', 0.05, 0.05);
+            } 
+            // 동일 칸 취소
+            else if (selectedIndex === index) {
+                selectedIndex = null;
+            } 
+            // 두 번째 선택 (교체 또는 이동)
+            else {
+                // seatingLayout의 길이를 초과하는 인덱스는 가상의 빈자리임
+                // 데이터를 교체하기 위해 배열 크기를 맞춰줌 (필요 시)
+                const maxIdx = Math.max(selectedIndex, index);
+                while (seatingLayout.length <= maxIdx) {
+                    seatingLayout.push({ id: '', name: '', gender: 'none' });
+                }
+
+                // 자리 바꾸기
+                [seatingLayout[selectedIndex], seatingLayout[index]] = [seatingLayout[index], seatingLayout[selectedIndex]];
+                
+                // 데이터 정제: 이름이 없는 빈 객체들이 배열 끝에 너무 많이 남지 않도록 정리 (옵션)
+                // 하지만 여기서는 인덱스 유지가 중요하므로 그대로 둡니다.
+
+                selectedIndex = null;
+                playImpactSound(800, 'sine', 0.1, 0.1); 
+            }
+            renderSeats();
+        }
+
+        async function startSeating() {
+            initAudio();
+            const overlay = document.getElementById('countdown');
+            overlay.style.display = 'flex';
+            for (let i = 3; i >= 1; i--) {
+                overlay.innerText = i;
+                playImpactSound(100, 'sine', 0.3, 0.2); 
+                playImpactSound(1000 + (i * 200), 'square', 0.05, 0.1);
+                await new Promise(r => setTimeout(r, 800));
+            }
+            overlay.innerText = "짠!";
+            playFanfare();
+            await new Promise(r => setTimeout(r, 600));
+            overlay.style.display = 'none';
+
+            // 실제 학생 데이터만 추출해서 섞기 (빈칸 제외)
+            let actualStudents = seatingLayout.filter(s => s.name !== '');
+            for (let i = actualStudents.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [actualStudents[i], actualStudents[j]] = [actualStudents[j], actualStudents[i]];
+            }
+            seatingLayout = actualStudents;
+            
+            renderSeats();
+        }
+    </script>
+</body>
+</html>
